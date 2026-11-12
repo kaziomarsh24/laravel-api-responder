@@ -1,0 +1,66 @@
+{
+    "name": "kaziomar/laravel-api-responder",
+    "description": "Lightweight, production-grade, highly-reusable Laravel package for standardized JSON API responses with smart automatic pagination and resource extraction.",
+    "keywords": [
+        "laravel",
+        "api",
+        "response",
+        "json-api",
+        "responder",
+        "pagination",
+        "json-resource",
+        "api-response"
+    ],
+    "homepage": "https://github.com/kaziomarsh24/laravel-api-responder",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kazi Omar Faruk",
+            "email": "softeng.kaziomar@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/pagination": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/contracts": "^10.0 || ^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0 || ^11.0",
+        "phpunit/phpunit": "^10.0 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "KaziOmar\\ApiResponder\\": "src/"
+        },
+        "files": [
+            "src/Helpers/api_response.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "KaziOmar\\ApiResponder\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "KaziOmar\\ApiResponder\\ApiResponderServiceProvider"
+            ],
+            "aliases": {
+                "ApiResponse": "KaziOmar\\ApiResponder\\Facades\\ApiResponse"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {}
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "test": "vendor/bin/phpunit"
+    }
+}
