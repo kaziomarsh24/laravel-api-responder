@@ -12,6 +12,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\MessageBag;
 use Illuminate\Contracts\Support\MessageProvider;
 use Illuminate\Contracts\Validation\Validator as ValidatorContract;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -20,6 +21,8 @@ use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use JsonSerializable;
+use PDOException;
+use Stringable;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 use Traversable;
@@ -60,15 +63,6 @@ class ApiResponseService
     }
 
     /**
-     * Set a custom trace ID.
-     */
-    public function withTraceId(string $traceId): static
-    {
-        $this->traceId = $traceId;
-        return $this;
-    }
-
-    /**
      * Attach custom metadata to the response envelope.
      */
     public function withMeta(array $meta): static
@@ -105,6 +99,15 @@ class ApiResponseService
     }
 
     /**
+     * Set a custom trace ID.
+     */
+    public function withTraceId(string $traceId): static
+    {
+        $this->traceId = $traceId;
+        return $this;
+    }
+
+    /**
      * Override JSON encoding options.
      */
     public function setJsonOptions(int $options): static
@@ -115,11 +118,6 @@ class ApiResponseService
 
     /**
      * Build a standardized success JSON response.
-     *
-     * Automatically handles:
-     * - ($message, $data) or ($data)
-     * - ResourceCollection, JsonResource, LengthAwarePaginator, CursorPaginator
-     * - Arrayable, Traversable, raw arrays, and objects
      */
     public function success(
         mixed $message = null,
@@ -128,9 +126,13 @@ class ApiResponseService
         array $headers = []
     ): JsonResponse {
         // Ergonomic parameter swapping: if first parameter is data and second is null
-        if (!is_string($message) && $message !== null && $data === null) {
-            $data = $message;
-            $message = $this->getDefaultMessage('success', 'Success');
+        if ($message !== null && $data === null) {
+            if ($message instanceof Stringable) {
+                $message = (string) $message;
+            } elseif (is_array($message) || (is_object($message) && !($message instanceof Stringable))) {
+                $data = $message;
+                $message = $this->getDefaultMessage('success', 'Success');
+            }
         } elseif ($message === null) {
             $message = $this->getDefaultMessage('success', 'Success');
         }
@@ -143,9 +145,13 @@ class ApiResponseService
         $paginationKey = $this->getKey('pagination', 'pagination');
         $metaKey       = $this->getKey('meta', 'meta');
 
+        $messageStr = ($message instanceof Stringable || is_scalar($message))
+            ? (string) $message
+            : $this->getDefaultMessage('success', 'Success');
+
         $payload = [
             $statusKey  => true,
-            $messageKey => (string) $message,
+            $messageKey => $messageStr,
         ];
 
         // Include data key based on configuration or presence
@@ -170,9 +176,6 @@ class ApiResponseService
 
     /**
      * Build a standardized error JSON response.
-     *
-     * Gracefully accepts:
-     * - string, array, Validator, ValidationException, MessageBag, Throwable, or null
      */
     public function error(
         mixed $message = null,
@@ -180,7 +183,17 @@ class ApiResponseService
         int $statusCode = Response::HTTP_BAD_REQUEST,
         array $headers = []
     ): JsonResponse {
-        if ($message === null) {
+        // Ergonomic parameter swapping: if 1st argument is error payload and 2nd is null
+        if ($message !== null && $errors === null) {
+            if (is_array($message) ||
+                $message instanceof ValidatorContract ||
+                $message instanceof ValidationException ||
+                $message instanceof MessageBag ||
+                $message instanceof Throwable) {
+                $errors = $message;
+                $message = $this->getDefaultMessage('bad_request', 'Bad request');
+            }
+        } elseif ($message === null) {
             $message = $this->getDefaultMessage('bad_request', 'Bad request');
         }
 
@@ -191,9 +204,13 @@ class ApiResponseService
         $errorsKey  = $this->getKey('errors', 'errors');
         $metaKey    = $this->getKey('meta', 'meta');
 
+        $messageStr = ($message instanceof Stringable || is_scalar($message))
+            ? (string) $message
+            : $this->getDefaultMessage('bad_request', 'Bad request');
+
         $payload = [
             $statusKey  => false,
-            $messageKey => (string) $message,
+            $messageKey => $messageStr,
         ];
 
         if ($normalizedErrors !== null || config('api-response.include_null_errors', true)) {
@@ -218,7 +235,7 @@ class ApiResponseService
      */
     public function created(
         mixed $data = null,
-        ?string $message = null,
+        mixed $message = null,
         array $headers = []
     ): JsonResponse {
         $message ??= $this->getDefaultMessage('created', 'Resource created successfully');
@@ -230,7 +247,7 @@ class ApiResponseService
      */
     public function accepted(
         mixed $data = null,
-        ?string $message = null,
+        mixed $message = null,
         array $headers = []
     ): JsonResponse {
         $message ??= $this->getDefaultMessage('accepted', 'Request accepted');
@@ -238,21 +255,37 @@ class ApiResponseService
     }
 
     /**
-     * 204 No Content Response.
+     * 204 No Content Response (Pure empty response conforming to RFC 9110).
      */
-    public function noContent(array $headers = []): JsonResponse
+    public function noContent(array $headers = []): Response
     {
-        return $this->createJsonResponse(null, Response::HTTP_NO_CONTENT, $headers);
+        $defaultHeaders = (array) config('api-response.headers', []);
+        unset($defaultHeaders['Content-Type']);
+        $mergedHeaders  = array_merge($defaultHeaders, $this->headers, $headers);
+
+        $response = new Response('', Response::HTTP_NO_CONTENT, $mergedHeaders);
+
+        foreach ($this->cookies as $cookie) {
+            $response->withCookie($cookie);
+        }
+
+        $this->resetState();
+
+        return $response;
     }
 
     /**
      * 400 Bad Request Response.
      */
     public function badRequest(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
+        if ($message !== null && $errors === null && !is_string($message) && !($message instanceof Stringable)) {
+            $errors = $message;
+            $message = null;
+        }
         $message ??= $this->getDefaultMessage('bad_request', 'Bad request');
         return $this->error($message, $errors, Response::HTTP_BAD_REQUEST, $headers);
     }
@@ -261,11 +294,15 @@ class ApiResponseService
      * 401 Unauthorized Response.
      */
     public function unauthorized(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
-        $message ??= $this->getDefaultMessage('unauthorized', 'Unauthorized');
+        if ($message !== null && $errors === null && !is_string($message) && !($message instanceof Stringable)) {
+            $errors = $message;
+            $message = null;
+        }
+        $message ??= $this->getDefaultMessage('unauthorized', 'Unauthorized access');
         return $this->error($message, $errors, Response::HTTP_UNAUTHORIZED, $headers);
     }
 
@@ -273,11 +310,15 @@ class ApiResponseService
      * 403 Forbidden Response.
      */
     public function forbidden(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
-        $message ??= $this->getDefaultMessage('forbidden', 'Forbidden');
+        if ($message !== null && $errors === null && !is_string($message) && !($message instanceof Stringable)) {
+            $errors = $message;
+            $message = null;
+        }
+        $message ??= $this->getDefaultMessage('forbidden', 'Access forbidden');
         return $this->error($message, $errors, Response::HTTP_FORBIDDEN, $headers);
     }
 
@@ -285,10 +326,14 @@ class ApiResponseService
      * 404 Not Found Response.
      */
     public function notFound(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
+        if ($message !== null && $errors === null && !is_string($message) && !($message instanceof Stringable)) {
+            $errors = $message;
+            $message = null;
+        }
         $message ??= $this->getDefaultMessage('not_found', 'Resource not found');
         return $this->error($message, $errors, Response::HTTP_NOT_FOUND, $headers);
     }
@@ -298,10 +343,10 @@ class ApiResponseService
      */
     public function validationError(
         mixed $errors,
-        ?string $message = null,
+        mixed $message = null,
         array $headers = []
     ): JsonResponse {
-        $message ??= $this->getDefaultMessage('validation_error', 'Validation error');
+        $message ??= $this->getDefaultMessage('validation_error', 'Validation failed');
         return $this->error($message, $errors, Response::HTTP_UNPROCESSABLE_ENTITY, $headers);
     }
 
@@ -309,11 +354,15 @@ class ApiResponseService
      * 500 Internal Server Error Response.
      */
     public function serverError(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
-        $message ??= $this->getDefaultMessage('server_error', 'Internal server error');
+        if ($message instanceof Throwable || (is_array($message) && $errors === null)) {
+            $errors = $message;
+            $message = null;
+        }
+        $message ??= $this->getDefaultMessage('server_error', 'An internal server error occurred');
         return $this->error($message, $errors, Response::HTTP_INTERNAL_SERVER_ERROR, $headers);
     }
 
@@ -430,7 +479,7 @@ class ApiResponseService
     }
 
     /**
-     * Recursively normalize collection items (e.g. nested JsonResource or Arrayable).
+     * Recursively normalize collection items (preserving associative keys while keeping lists sequential).
      */
     protected function normalizeCollectionItems(mixed $items): mixed
     {
@@ -455,7 +504,7 @@ class ApiResponseService
             }
         }
 
-        return array_values($results);
+        return array_is_list($results) ? array_values($results) : $results;
     }
 
     /*
@@ -496,13 +545,28 @@ class ApiResponseService
         // Throwable / Exception
         if ($errors instanceof Throwable) {
             if (config('api-response.debug_exceptions', config('app.debug', false))) {
+                // Strip function args from trace to prevent circular recursion and OOM
+                $safeTrace = collect($errors->getTrace())->take(10)->map(function ($frame) {
+                    return [
+                        'file'     => $frame['file'] ?? '[internal]',
+                        'line'     => $frame['line'] ?? 0,
+                        'class'    => $frame['class'] ?? null,
+                        'function' => $frame['function'] ?? null,
+                    ];
+                })->all();
+
                 return [
                     'exception' => get_class($errors),
                     'message'   => $errors->getMessage(),
                     'file'      => $errors->getFile(),
                     'line'      => $errors->getLine(),
-                    'trace'     => collect($errors->getTrace())->take(10)->toArray(),
+                    'trace'     => $safeTrace,
                 ];
+            }
+
+            // In production, prevent leaking internal SQL / Database details
+            if ($errors instanceof QueryException || $errors instanceof PDOException) {
+                return ['error' => ['A database query error occurred.']];
             }
 
             return ['error' => [$errors->getMessage()]];
@@ -536,47 +600,56 @@ class ApiResponseService
      */
     protected function createJsonResponse(mixed $data, int $statusCode, array $headers = []): JsonResponse
     {
-        $defaultHeaders = (array) config('api-response.headers', []);
-        $mergedHeaders  = array_merge($defaultHeaders, $this->headers, $headers);
+        try {
+            $defaultHeaders = (array) config('api-response.headers', []);
+            $mergedHeaders  = array_merge($defaultHeaders, $this->headers, $headers);
 
-        // Process Trace ID
-        if (config('api-response.trace_id.enabled', true)) {
-            $traceId = $this->getOrGenerateTraceId();
-            $traceHeader = (string) config('api-response.trace_id.header_name', 'X-Request-Id');
-            $mergedHeaders[$traceHeader] = $traceId;
+            // Process Trace ID
+            if (config('api-response.trace_id.enabled', true)) {
+                $traceId = $this->getOrGenerateTraceId();
+                $traceHeader = (string) config('api-response.trace_id.header_name', 'X-Request-Id');
+                $mergedHeaders[$traceHeader] = $traceId;
 
-            $onlyOnError = (bool) config('api-response.trace_id.only_on_error', false);
-            $traceKey    = (string) config('api-response.keys.trace_id', 'trace_id');
+                $onlyOnError = (bool) config('api-response.trace_id.only_on_error', false);
+                $traceKey    = (string) config('api-response.keys.trace_id', 'trace_id');
 
-            if (is_array($data)) {
-                $statusKey = $this->getKey('status', 'ok');
-                $isSuccess = ($data[$statusKey] ?? true) === true;
+                if (is_array($data)) {
+                    $statusKey = $this->getKey('status', 'ok');
+                    $isSuccess = ($data[$statusKey] ?? true) === true;
 
-                if (! $onlyOnError || ! $isSuccess) {
-                    $data[$traceKey] = $traceId;
+                    if (! $onlyOnError || ! $isSuccess) {
+                        $data[$traceKey] = $traceId;
+                    }
                 }
             }
+
+            $jsonOptions = $this->jsonOptions ?? (int) config(
+                'api-response.json_options',
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
+
+            $response = new JsonResponse($data, $statusCode, $mergedHeaders, $jsonOptions);
+
+            foreach ($this->cookies as $cookie) {
+                $response->withCookie($cookie);
+            }
+
+            return $response;
+        } finally {
+            $this->resetState();
         }
+    }
 
-        $jsonOptions = $this->jsonOptions ?? (int) config(
-            'api-response.json_options',
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-        );
-
-        $response = new JsonResponse($data, $statusCode, $mergedHeaders, $jsonOptions);
-
-        foreach ($this->cookies as $cookie) {
-            $response->withCookie($cookie);
-        }
-
-        // Reset state for potential singleton or reused instances
+    /**
+     * Reset fluent state to prevent leaks in Octane / roadrunner / singletons.
+     */
+    public function resetState(): void
+    {
         $this->meta        = [];
         $this->headers     = [];
         $this->cookies     = [];
         $this->traceId     = null;
         $this->jsonOptions = null;
-
-        return $response;
     }
 
     /**
@@ -584,7 +657,7 @@ class ApiResponseService
      */
     public function getOrGenerateTraceId(): string
     {
-        if ($this->traceId !== null) {
+        if ($this->traceId !== null && trim($this->traceId) !== '') {
             return $this->traceId;
         }
 
@@ -592,10 +665,15 @@ class ApiResponseService
         $request = request();
 
         if ($request && $request->hasHeader($headerName)) {
-            return (string) $request->header($headerName);
+            $val = trim((string) $request->header($headerName));
+            if ($val !== '') {
+                $this->traceId = $val;
+                return $this->traceId;
+            }
         }
 
-        return 'req_' . bin2hex(random_bytes(8));
+        $this->traceId = 'req_' . bin2hex(random_bytes(8));
+        return $this->traceId;
     }
 
     /**

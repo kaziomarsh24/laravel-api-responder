@@ -28,7 +28,7 @@ class ApiExceptionHandler
     {
         // Laravel 11/12 bootstrap/app.php ($exceptions is Illuminate\Foundation\Configuration\Exceptions)
         if (method_exists($exceptions, 'render')) {
-            $exceptions->render(function (Throwable $e, Request $request) {
+            $exceptions->render(function (Throwable $e, ?Request $request = null) {
                 return static::render($e, $request);
             });
             return;
@@ -36,7 +36,7 @@ class ApiExceptionHandler
 
         // Laravel 10 app/Exceptions/Handler.php ($exceptions is Illuminate\Foundation\Exceptions\Handler)
         if (method_exists($exceptions, 'renderable')) {
-            $exceptions->renderable(function (Throwable $e, Request $request) {
+            $exceptions->renderable(function (Throwable $e, ?Request $request = null) {
                 return static::render($e, $request);
             });
         }
@@ -52,7 +52,7 @@ class ApiExceptionHandler
 
         // If configured to only touch API requests, skip standard browser web requests
         if ($request && config('api-response.exceptions.only_api_requests', true)) {
-            $isApi = $request->expectsJson() || $request->is('api/*') || app()->runningUnitTests();
+            $isApi = $request->expectsJson() || $request->is('api/*') || (function_exists('app') && app()->runningUnitTests());
             if (! $isApi) {
                 return null;
             }
@@ -61,6 +61,15 @@ class ApiExceptionHandler
         // Unpack wrapped exceptions from Laravel's prepareException
         if ($e instanceof NotFoundHttpException && $e->getPrevious() instanceof ModelNotFoundException) {
             $e = $e->getPrevious();
+        }
+
+        // Automatically report exception to laravel.log / Sentry / Bugsnag if configured
+        if (config('api-response.exceptions.log_unhandled', true) && function_exists('report')) {
+            try {
+                report($e);
+            } catch (Throwable) {
+                // Silently ignore reporting errors to avoid loop
+            }
         }
 
         // 1. ValidationException (FormRequest or Validator)
@@ -72,7 +81,7 @@ class ApiExceptionHandler
         // 2. ModelNotFoundException (e.g. Model::findOrFail)
         if ($e instanceof ModelNotFoundException) {
             $model = class_basename($e->getModel());
-            $ids = implode(', ', (array) $e->getIds());
+            $ids = implode(', ', array_map(fn($id) => is_array($id) ? json_encode($id) : (string) $id, (array) $e->getIds()));
             $detail = $ids !== '' ? "{$model} with ID [{$ids}] not found." : "{$model} not found.";
             $msg = (string) config('api-response.messages.not_found', 'Resource not found');
 

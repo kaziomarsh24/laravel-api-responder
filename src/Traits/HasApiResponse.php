@@ -11,6 +11,51 @@ use Symfony\Component\HttpFoundation\Response;
 trait HasApiResponse
 {
     /**
+     * Attach custom metadata to the response.
+     */
+    public function withMeta(array $meta): static
+    {
+        ApiResponse::withMeta($meta);
+        return $this;
+    }
+
+    /**
+     * Add a single HTTP header to the response.
+     */
+    public function withHeader(string $key, string $value): static
+    {
+        ApiResponse::withHeader($key, $value);
+        return $this;
+    }
+
+    /**
+     * Add multiple HTTP headers to the response.
+     */
+    public function withHeaders(array $headers): static
+    {
+        ApiResponse::withHeaders($headers);
+        return $this;
+    }
+
+    /**
+     * Attach a cookie to the response.
+     */
+    public function withCookie(mixed $cookie): static
+    {
+        ApiResponse::withCookie($cookie);
+        return $this;
+    }
+
+    /**
+     * Set a custom trace ID for the response.
+     */
+    public function withTraceId(string $traceId): static
+    {
+        ApiResponse::withTraceId($traceId);
+        return $this;
+    }
+
+    /**
      * Respond with a standardized success envelope.
      */
     public function success(
@@ -39,7 +84,7 @@ trait HasApiResponse
      */
     public function created(
         mixed $data = null,
-        ?string $message = null,
+        mixed $message = null,
         array $headers = []
     ): JsonResponse {
         return ApiResponse::created($data, $message, $headers);
@@ -50,7 +95,7 @@ trait HasApiResponse
      */
     public function accepted(
         mixed $data = null,
-        ?string $message = null,
+        mixed $message = null,
         array $headers = []
     ): JsonResponse {
         return ApiResponse::accepted($data, $message, $headers);
@@ -59,7 +104,7 @@ trait HasApiResponse
     /**
      * 204 No Content Response.
      */
-    public function noContent(array $headers = []): JsonResponse
+    public function noContent(array $headers = []): Response
     {
         return ApiResponse::noContent($headers);
     }
@@ -68,7 +113,7 @@ trait HasApiResponse
      * 400 Bad Request Response.
      */
     public function badRequest(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
@@ -79,7 +124,7 @@ trait HasApiResponse
      * 401 Unauthorized Response.
      */
     public function unauthorized(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
@@ -90,7 +135,7 @@ trait HasApiResponse
      * 403 Forbidden Response.
      */
     public function forbidden(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
@@ -101,7 +146,7 @@ trait HasApiResponse
      * 404 Not Found Response.
      */
     public function notFound(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
@@ -113,7 +158,7 @@ trait HasApiResponse
      */
     public function validationError(
         mixed $errors,
-        ?string $message = null,
+        mixed $message = null,
         array $headers = []
     ): JsonResponse {
         return ApiResponse::validationError($errors, $message, $headers);
@@ -123,7 +168,7 @@ trait HasApiResponse
      * 500 Internal Server Error Response.
      */
     public function serverError(
-        ?string $message = null,
+        mixed $message = null,
         mixed $errors = null,
         array $headers = []
     ): JsonResponse {
