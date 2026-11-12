@@ -37,7 +37,7 @@ Eliminate repetitive `response()->json(...)` boilerplate across your controllers
 Install the package via Composer:
 
 ```bash
-composer require kaziomar/laravel-api-responder
+composer require thekaziomar/laravel-api-responder
 ```
 
 The service provider and `ApiResponse` facade will automatically be registered via Laravel Package Auto-Discovery.

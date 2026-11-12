@@ -1,5 +1,5 @@
 {
-    "name": "kaziomar/laravel-api-responder",
+    "name": "thekaziomar/laravel-api-responder",
     "description": "Lightweight, production-grade, highly-reusable Laravel package for standardized JSON API responses with smart automatic pagination and resource extraction.",
     "keywords": [
         "laravel",
