@@ -52,6 +52,44 @@ php artisan vendor:publish --tag="api-responder-config"
 
 This creates `config/api-response.php`.
 
+### Global Automatic Exception Handling (Recommended)
+
+To automatically format all unhandled exceptions (FormRequest validation, 404 ModelNotFound, 401 Unauthenticated, 403 Forbidden, 429 Throttle, 500 crashes) into your standardized envelope:
+
+#### In Laravel 11 & 12 (`bootstrap/app.php`):
+```php
+use KaziOmar\ApiResponder\Facades\ApiResponse;
+
+return Application::configure(basePath: dirname(__DIR__))
+    // ...
+    ->withExceptions(function ($exceptions) {
+        ApiResponse::registerExceptionHandler($exceptions);
+    })->create();
+```
+
+#### In Laravel 10 (`app/Exceptions/Handler.php`):
+```php
+use KaziOmar\ApiResponder\Facades\ApiResponse;
+
+public function register(): void
+{
+    ApiResponse::registerExceptionHandler($this);
+}
+```
+
+#### Force JSON Middleware (Optional):
+To ensure clients never receive HTML redirects if they omit the `Accept: application/json` header, attach the bundled middleware to your `api` route group:
+```php
+// In bootstrap/app.php (Laravel 11/12)
+->withMiddleware(function ($middleware) {
+    $middleware->api(append: [
+        \KaziOmar\ApiResponder\Middleware\ForceJsonResponse::class,
+    ]);
+})
+// Or in routes/api.php
+Route::middleware('api.force_json')->group(function () { ... });
+```
+
 ---
 
 ## ⚡ Quickstart
