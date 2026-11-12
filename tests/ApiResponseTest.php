@@ -366,4 +366,106 @@ class ApiResponseTest extends TestCase
         $this->assertStringContainsString('session_test', (string) $response->headers->get('Set-Cookie'));
         $this->assertStringContainsString('বাংলা', $response->getContent());
     }
+
+    public function test_trace_id_is_attached_to_response_and_header(): void
+    {
+        $response = ApiResponse::success('Tracked action', ['id' => 1]);
+
+        $this->assertTrue($response->headers->has('X-Request-Id'));
+        $traceId = $response->headers->get('X-Request-Id');
+        $this->assertNotEmpty($traceId);
+
+        $payload = $response->getData(true);
+        $this->assertArrayHasKey('trace_id', $payload);
+        $this->assertEquals($traceId, $payload['trace_id']);
+    }
+
+    public function test_custom_trace_id_can_be_assigned(): void
+    {
+        $response = ApiResponse::make()
+            ->withTraceId('custom_trace_999')
+            ->error('Trace failure');
+
+        $this->assertEquals('custom_trace_999', $response->headers->get('X-Request-Id'));
+        $this->assertEquals('custom_trace_999', $response->getData(true)['trace_id']);
+    }
+
+    public function test_exception_handler_converts_validation_exception(): void
+    {
+        $validator = Validator::make([], ['title' => 'required']);
+        $exception = new \Illuminate\Validation\ValidationException($validator);
+
+        $response = \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($exception);
+        $this->assertNotNull($response);
+        $this->assertEquals(422, $response->getStatusCode());
+
+        $payload = $response->getData(true);
+        $this->assertFalse($payload['ok']);
+        $this->assertArrayHasKey('title', $payload['errors']);
+    }
+
+    public function test_exception_handler_converts_model_not_found_exception(): void
+    {
+        $exception = new \Illuminate\Database\Eloquent\ModelNotFoundException();
+        $exception->setModel('App\\Models\\User', [42]);
+
+        $response = \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($exception);
+        $this->assertNotNull($response);
+        $this->assertEquals(404, $response->getStatusCode());
+
+        $payload = $response->getData(true);
+        $this->assertFalse($payload['ok']);
+        $this->assertStringContainsString('User with ID [42] not found', $payload['errors']['error'][0]);
+    }
+
+    public function test_exception_handler_converts_authentication_exception(): void
+    {
+        $exception = new \Illuminate\Auth\AuthenticationException('Unauthenticated.');
+
+        $response = \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($exception);
+        $this->assertNotNull($response);
+        $this->assertEquals(401, $response->getStatusCode());
+
+        $payload = $response->getData(true);
+        $this->assertFalse($payload['ok']);
+        $this->assertEquals('Unauthorized access', $payload['message']);
+    }
+
+    public function test_exception_handler_converts_authorization_exception(): void
+    {
+        $exception = new \Illuminate\Auth\Access\AuthorizationException('Forbidden action.');
+
+        $response = \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($exception);
+        $this->assertNotNull($response);
+        $this->assertEquals(403, $response->getStatusCode());
+
+        $payload = $response->getData(true);
+        $this->assertFalse($payload['ok']);
+        $this->assertEquals('Access forbidden', $payload['message']);
+    }
+
+    public function test_exception_handler_converts_rate_limit_exception(): void
+    {
+        $exception = new \Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException(60, 'Too many requests.');
+
+        $response = \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($exception);
+        $this->assertNotNull($response);
+        $this->assertEquals(429, $response->getStatusCode());
+
+        $payload = $response->getData(true);
+        $this->assertFalse($payload['ok']);
+        $this->assertEquals('Too many requests. Please slow down.', $payload['message']);
+    }
+
+    public function test_force_json_response_middleware(): void
+    {
+        $middleware = new \KaziOmar\ApiResponder\Middleware\ForceJsonResponse();
+        $request = \Illuminate\Http\Request::create('/api/test', 'GET');
+        $this->assertFalse($request->expectsJson());
+
+        $middleware->handle($request, function ($req) {
+            $this->assertTrue($req->expectsJson());
+            return response()->json(['ok' => true]);
+        });
+    }
 }

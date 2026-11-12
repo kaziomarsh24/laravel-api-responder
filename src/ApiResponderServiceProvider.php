@@ -41,6 +41,13 @@ class ApiResponderServiceProvider extends ServiceProvider
                 __DIR__ . '/../config/api-response.php' => config_path('api-response.php'),
             ], 'api-responder-config');
         }
+
+        if ($this->app->bound('router')) {
+            $this->app['router']->aliasMiddleware(
+                'api.force_json',
+                \KaziOmar\ApiResponder\Middleware\ForceJsonResponse::class
+            );
+        }
     }
 
     /**

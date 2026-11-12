@@ -47,11 +47,25 @@ class ApiResponseService
     protected ?int $jsonOptions = null;
 
     /**
+     * Unique Trace ID for the current request.
+     */
+    protected ?string $traceId = null;
+
+    /**
      * Create a new instance (supports method chaining).
      */
     public static function make(): static
     {
         return new static();
+    }
+
+    /**
+     * Set a custom trace ID.
+     */
+    public function withTraceId(string $traceId): static
+    {
+        $this->traceId = $traceId;
+        return $this;
     }
 
     /**
@@ -518,12 +532,31 @@ class ApiResponseService
     */
 
     /**
-     * Create the final JsonResponse with headers, cookies, and options applied.
+     * Create the final JsonResponse with headers, cookies, trace ID, and options applied.
      */
     protected function createJsonResponse(mixed $data, int $statusCode, array $headers = []): JsonResponse
     {
         $defaultHeaders = (array) config('api-response.headers', []);
         $mergedHeaders  = array_merge($defaultHeaders, $this->headers, $headers);
+
+        // Process Trace ID
+        if (config('api-response.trace_id.enabled', true)) {
+            $traceId = $this->getOrGenerateTraceId();
+            $traceHeader = (string) config('api-response.trace_id.header_name', 'X-Request-Id');
+            $mergedHeaders[$traceHeader] = $traceId;
+
+            $onlyOnError = (bool) config('api-response.trace_id.only_on_error', false);
+            $traceKey    = (string) config('api-response.keys.trace_id', 'trace_id');
+
+            if (is_array($data)) {
+                $statusKey = $this->getKey('status', 'ok');
+                $isSuccess = ($data[$statusKey] ?? true) === true;
+
+                if (! $onlyOnError || ! $isSuccess) {
+                    $data[$traceKey] = $traceId;
+                }
+            }
+        }
 
         $jsonOptions = $this->jsonOptions ?? (int) config(
             'api-response.json_options',
@@ -540,9 +573,45 @@ class ApiResponseService
         $this->meta        = [];
         $this->headers     = [];
         $this->cookies     = [];
+        $this->traceId     = null;
         $this->jsonOptions = null;
 
         return $response;
+    }
+
+    /**
+     * Resolve or generate a unique Trace ID.
+     */
+    public function getOrGenerateTraceId(): string
+    {
+        if ($this->traceId !== null) {
+            return $this->traceId;
+        }
+
+        $headerName = (string) config('api-response.trace_id.header_name', 'X-Request-Id');
+        $request = request();
+
+        if ($request && $request->hasHeader($headerName)) {
+            return (string) $request->header($headerName);
+        }
+
+        return 'req_' . bin2hex(random_bytes(8));
+    }
+
+    /**
+     * Register global API exception handling for Laravel 10/11/12.
+     */
+    public function registerExceptionHandler(mixed $exceptions): void
+    {
+        \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::register($exceptions);
+    }
+
+    /**
+     * Render an exception into a standardized JsonResponse.
+     */
+    public function renderException(Throwable $e, ?\Illuminate\Http\Request $request = null): ?JsonResponse
+    {
+        return \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($e, $request);
     }
 
     /**

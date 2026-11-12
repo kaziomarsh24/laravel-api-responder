@@ -20,6 +20,24 @@ return [
         'errors'     => 'errors',      // error details container
         'pagination' => 'pagination',  // pagination metadata container
         'meta'       => 'meta',        // additional custom metadata
+        'trace_id'   => 'trace_id',    // unique request tracking id
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Request / Trace ID Tracking
+    |--------------------------------------------------------------------------
+    |
+    | Automatically attaches a unique trace ID to responses and sets the
+    | 'X-Request-Id' HTTP header. Enables instant correlation between frontend
+    | error screens and backend server logs.
+    |
+    */
+
+    'trace_id' => [
+        'enabled'       => true,
+        'header_name'   => 'X-Request-Id',
+        'only_on_error' => false,      // if true, only appears in error envelopes
     ],
 
     /*
@@ -56,16 +74,18 @@ return [
     */
 
     'messages' => [
-        'success'          => 'Success',
-        'created'          => 'Resource created successfully',
-        'accepted'         => 'Request accepted for processing',
-        'no_content'       => '',
-        'bad_request'      => 'Bad request',
-        'unauthorized'     => 'Unauthorized access',
-        'forbidden'        => 'Access forbidden',
-        'not_found'        => 'Resource not found',
-        'validation_error' => 'Validation failed',
-        'server_error'     => 'An internal server error occurred',
+        'success'           => 'Success',
+        'created'           => 'Resource created successfully',
+        'accepted'          => 'Request accepted for processing',
+        'no_content'        => '',
+        'bad_request'       => 'Bad request',
+        'unauthorized'      => 'Unauthorized access',
+        'forbidden'         => 'Access forbidden',
+        'not_found'         => 'Resource not found',
+        'method_not_allowed'=> 'Method not allowed',
+        'too_many_requests' => 'Too many requests. Please slow down.',
+        'validation_error'  => 'Validation failed',
+        'server_error'      => 'An internal server error occurred',
     ],
 
     /*
@@ -80,8 +100,23 @@ return [
     // Whether to include 'errors' key when error is null or empty on error responses
     'include_null_errors' => true,
 
-    // When an exception is passed as error, append stack trace & debug details if true
+    // When an exception occurs, append stack trace & debug details if true
     'debug_exceptions' => env('APP_DEBUG', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Global Exception Handling for API
+    |--------------------------------------------------------------------------
+    |
+    | When true, only requests expecting JSON (or with /api prefix) are rendered
+    | by the ApiExceptionHandler. Non-API web routes remain untouched.
+    |
+    */
+
+    'exceptions' => [
+        'only_api_requests' => true,
+        'log_unhandled'     => true,
+    ],
 
     /*
     |--------------------------------------------------------------------------
