@@ -114,6 +114,7 @@ return [
     */
 
     'exceptions' => [
+        'auto_handle'       => true,   // Automatically formats unhandled API exceptions without editing bootstrap/app.php
         'only_api_requests' => true,
         'log_unhandled'     => true,
     ],

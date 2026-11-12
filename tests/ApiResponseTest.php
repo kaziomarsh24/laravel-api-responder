@@ -468,4 +468,22 @@ class ApiResponseTest extends TestCase
             return response()->json(['ok' => true]);
         });
     }
+
+    public function test_automatic_exception_handling_via_http_pipeline(): void
+    {
+        $this->app['router']->get('/api/test-fail', function () {
+            $exception = new \Illuminate\Database\Eloquent\ModelNotFoundException();
+            $exception->setModel('App\\Models\\User', [999]);
+            throw $exception;
+        });
+
+        $response = $this->getJson('/api/test-fail');
+
+        $response->assertStatus(404);
+        $payload = $response->json();
+        $this->assertFalse($payload['ok']);
+        $this->assertEquals('Resource not found', $payload['message']);
+        $this->assertStringContainsString('User with ID [999] not found', $payload['errors']['error'][0]);
+        $this->assertArrayHasKey('trace_id', $payload);
+    }
 }

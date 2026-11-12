@@ -48,6 +48,18 @@ class ApiResponderServiceProvider extends ServiceProvider
                 \KaziOmar\ApiResponder\Middleware\ForceJsonResponse::class
             );
         }
+
+        // Auto-register exception handling if enabled
+        if (config('api-response.exceptions.auto_handle', true)) {
+            if ($this->app->bound(\Illuminate\Contracts\Debug\ExceptionHandler::class)) {
+                $handler = $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class);
+                if (method_exists($handler, 'renderable')) {
+                    $handler->renderable(function (\Throwable $e, $request) {
+                        return \KaziOmar\ApiResponder\Handlers\ApiExceptionHandler::render($e, $request);
+                    });
+                }
+            }
+        }
     }
 
     /**

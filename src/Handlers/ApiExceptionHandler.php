@@ -58,6 +58,11 @@ class ApiExceptionHandler
             }
         }
 
+        // Unpack wrapped exceptions from Laravel's prepareException
+        if ($e instanceof NotFoundHttpException && $e->getPrevious() instanceof ModelNotFoundException) {
+            $e = $e->getPrevious();
+        }
+
         // 1. ValidationException (FormRequest or Validator)
         if ($e instanceof ValidationException) {
             $msg = $e->getMessage() ?: (string) config('api-response.messages.validation_error', 'Validation failed');
