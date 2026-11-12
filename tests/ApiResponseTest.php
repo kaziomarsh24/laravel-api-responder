@@ -400,6 +400,41 @@ class ApiResponseTest extends TestCase
         $tooMany = new TooManyRequestsHttpException(60, 'Throttled');
         $resTooMany = ApiExceptionHandler::render($tooMany);
         $this->assertEquals(429, $resTooMany->getStatusCode());
+
+        // Test HTTP exception with empty message
+        $emptyHttp = new \Symfony\Component\HttpKernel\Exception\HttpException(409, '');
+        $resEmpty = ApiExceptionHandler::render($emptyHttp);
+        $this->assertEquals(409, $resEmpty->getStatusCode());
+        $this->assertEquals('HTTP Error', $resEmpty->getData(true)['message']);
+        $this->assertEquals(['error' => ['HTTP Error']], $resEmpty->getData(true)['errors']);
+    }
+
+    public function test_204_no_content_with_cookies_does_not_fatal_error(): void
+    {
+        $cookie = cookie('auth_clear', 'expired', 0);
+        $response = ApiResponse::make()
+            ->withCookie($cookie)
+            ->noContent();
+
+        $this->assertEquals(204, $response->getStatusCode());
+        $this->assertEquals('', $response->getContent());
+        $this->assertStringContainsString('auth_clear', (string) $response->headers->get('Set-Cookie'));
+    }
+
+    public function test_collection_wrapping_json_resources_resolves_cleanly(): void
+    {
+        $collection = collect([
+            new DummyUserResource(['id' => 1, 'name' => 'John', 'email' => 'john@example.com']),
+            new DummyUserResource(['id' => 2, 'name' => 'Jane', 'email' => 'jane@example.com']),
+        ]);
+
+        $response = ApiResponse::success('Users in collection', $collection);
+        $payload = $response->getData(true);
+
+        $this->assertTrue($payload['ok']);
+        $this->assertCount(2, $payload['data']);
+        $this->assertEquals('JOHN', $payload['data'][0]['name']);
+        $this->assertEquals('JANE', $payload['data'][1]['name']);
     }
 
     public function test_global_helpers_coverage(): void

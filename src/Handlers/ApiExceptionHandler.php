@@ -138,9 +138,10 @@ class ApiExceptionHandler
 
         // 8. Other HTTP Exceptions
         if ($e instanceof HttpExceptionInterface) {
+            $msg = $e->getMessage() ?: 'HTTP Error';
             return ApiResponse::error(
-                $e->getMessage() ?: 'HTTP Error',
-                ['error' => [$e->getMessage()]],
+                $msg,
+                ['error' => [$msg]],
                 $e->getStatusCode(),
                 $e->getHeaders()
             );

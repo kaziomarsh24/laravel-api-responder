@@ -263,7 +263,7 @@ class ApiResponseService
         unset($defaultHeaders['Content-Type']);
         $mergedHeaders  = array_merge($defaultHeaders, $this->headers, $headers);
 
-        $response = new Response('', Response::HTTP_NO_CONTENT, $mergedHeaders);
+        $response = new \Illuminate\Http\Response('', Response::HTTP_NO_CONTENT, $mergedHeaders);
 
         foreach ($this->cookies as $cookie) {
             $response->withCookie($cookie);
@@ -419,7 +419,12 @@ class ApiResponseService
             return [$items, $pagination];
         }
 
-        // Case 4: Arrayable (e.g. Eloquent Collection, Model, etc.)
+        // Case 4: Support Collection (resolves nested JsonResources with request context)
+        if ($data instanceof Collection) {
+            return [$this->normalizeCollectionItems($data->all()), null];
+        }
+
+        // Case 5: Arrayable (e.g. Eloquent Model, custom Arrayable, etc.)
         if ($data instanceof Arrayable) {
             return [$data->toArray(), null];
         }
